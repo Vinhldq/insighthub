@@ -1,0 +1,49 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem@0.6.2",
+        "/home/tuantha/Documents/insighthub"
+      ]
+    },
+    "docker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-docker@0.5.0"
+      ]
+    },
+    "kubernetes": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "kubernetes-mcp-server@0.7.0",
+        "--read-only"
+      ],
+      "env": {
+        "KUBECONFIG": "/home/tuantha/.kube/mcp-viewer.kubeconfig"
+      }
+    },
+    "prometheus": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-prometheus@0.5.0",
+        "--endpoint",
+        "http://localhost:9090"
+      ]
+    },
+    "aws": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-aws@0.5.0"
+      ],
+      "env": {
+        "AWS_PROFILE": "mcp-readonly"
+      }
+    }
+  }
+}
