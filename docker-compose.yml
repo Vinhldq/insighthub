@@ -64,6 +64,37 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
+
+  ingestion-worker:
+    build: ./ingestion-worker
+    environment:
+      DATABASE_URL: postgresql://insighthub:insighthub@postgres:5432/insighthub
+      REDIS_URL: redis://redis:6379
+      # Worker cần các biến môi trường LLM/Embedding để thực hiện embed
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-gemini}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-deepseek-r1:14b}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   web:
     build: ./web

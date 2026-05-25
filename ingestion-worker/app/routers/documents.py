@@ -7,11 +7,11 @@ Sau refactor sẽ: lưu metadata → enqueue ARQ job → trả về 202 ngay.
 """
 import logging
 
-from fastapi import APIRouter, HTTPException, UploadFile, status
+from fastapi import APIRouter, HTTPException, UploadFile
 
 from app.core.db import get_conn
 from app.core.metrics import documents_total, ingestion_errors_total
-from app.core.redis import get_redis_pool
+from app.services.ingestion import ingest_document_sync
 
 logger = logging.getLogger("insighthub.routers.documents")
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -20,7 +20,7 @@ ALLOWED_EXT = (".txt", ".md", ".pdf")
 MAX_SIZE_MB = 10
 
 
-@router.post("", status_code=status.HTTP_202_ACCEPTED)
+@router.post("", status_code=201)
 async def upload_document(file: UploadFile):
     if not file.filename or not file.filename.lower().endswith(ALLOWED_EXT):
         raise HTTPException(400, f"Chỉ chấp nhận: {', '.join(ALLOWED_EXT)}")
@@ -37,19 +37,19 @@ async def upload_document(file: UploadFile):
         ).fetchone()
         document_id = row[0]
 
-    # Day 1: thay bằng redis.enqueue_job("ingest_document_task", document_id, filename, content)
+    # ⚠️  ĐIỂM YẾU v0: ingest đồng bộ — request bị block tới khi xong.
+    # Day 1: thay bằng redis.enqueue_job("ingest", document_id, filename, content)
     try:
-        redis = await get_redis_pool()
-        await redis.enqueue_job("ingest_document_task", document_id, file.filename, content)
+        chunk_count = ingest_document_sync(document_id, file.filename, content)
     except Exception as exc:  # noqa: BLE001
         ingestion_errors_total.inc()
-        logger.error(f"Failed to enqueue job: {exc}")
-        raise HTTPException(500, f"Không thể đẩy job vào queue: {exc}") from exc
+        raise HTTPException(500, f"Ingestion thất bại: {exc}") from exc
 
     return {
         "id": document_id,
         "filename": file.filename,
-        "status": "pending",
+        "status": "ready",
+        "chunk_count": chunk_count,
     }
 
 
