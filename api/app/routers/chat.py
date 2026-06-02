@@ -2,8 +2,10 @@
 InsightHub API — Chat router
 RAG query: retrieve → generate.
 """
+import asyncio
 import logging
 import time
+from functools import partial
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -42,14 +44,19 @@ class ChatResponse(BaseModel):
 async def chat(req: ChatRequest):
     start = time.perf_counter()
     with rag_query_latency.time():
-        contexts = retrieve(req.question, top_k=req.top_k)
+        # Run blocking I/O operations in thread pool to avoid blocking event loop
+        loop = asyncio.get_event_loop()
+        retrieve_fn = partial(retrieve, req.question, top_k=req.top_k)
+        contexts = await loop.run_in_executor(None, retrieve_fn)
+        
         if not contexts:
             raise HTTPException(
                 404, "Chưa có tài liệu nào sẵn sàng. Hãy upload tài liệu trước."
             )
 
         llm_start = time.perf_counter()
-        result = generate(req.question, contexts)
+        generate_fn = partial(generate, req.question, contexts)
+        result = await loop.run_in_executor(None, generate_fn)
         llm_call_latency.observe(time.perf_counter() - llm_start)
 
     # Metrics cho FinOps Day 6
