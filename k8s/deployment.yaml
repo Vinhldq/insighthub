@@ -1,0 +1,211 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: insighthub-dev
+  labels:
+    name: insighthub-dev
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: insighthub
+  namespace: insighthub-dev
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT_ID:role/insighthub-dev-role"
+  labels:
+    app: insighthub
+    managed-by: terraform
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: insighthub-config
+  namespace: insighthub-dev
+data:
+  APP_NAME: "InsightHub API"
+  ENVIRONMENT: "development"
+  LOG_LEVEL: "INFO"
+  LLM_PROVIDER: "ollama"
+  EMBEDDING_PROVIDER: "ollama"
+  RETRIEVAL_TOP_K: "5"
+  CHUNK_SIZE: "800"
+  HNSW_EF_SEARCH: "100"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: insighthub-secrets
+  namespace: insighthub-dev
+type: Opaque
+stringData:
+  DATABASE_URL: "postgresql://insighthub:PASSWORD@RDS_ENDPOINT:5432/insighthub"
+  REDIS_URL: "redis://:REDIS_PASSWORD@REDIS_ENDPOINT:6379"
+  GEMINI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insighthub-api
+  namespace: insighthub-dev
+  labels:
+    app: insighthub
+    component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: insighthub
+      component: api
+  template:
+    metadata:
+      labels:
+        app: insighthub
+        component: api
+    spec:
+      serviceAccountName: insighthub
+      containers:
+      - name: api
+        image: insighthubtest1-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: insighthub-secrets
+              key: DATABASE_URL
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: insighthub-secrets
+              key: REDIS_URL
+        envFrom:
+        - configMapRef:
+            name: insighthub-config
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insighthub-worker
+  namespace: insighthub-dev
+  labels:
+    app: insighthub
+    component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: insighthub
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: insighthub
+        component: worker
+    spec:
+      serviceAccountName: insighthub
+      containers:
+      - name: worker
+        image: insighthubtest1-ingestion-worker:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: insighthub-secrets
+              key: REDIS_URL
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: insighthub-secrets
+              key: DATABASE_URL
+        envFrom:
+        - configMapRef:
+            name: insighthub-config
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: insighthub-api
+  namespace: insighthub-dev
+  labels:
+    app: insighthub
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: insighthub
+    component: api
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: insighthub-api-hpa
+  namespace: insighthub-dev
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: insighthub-api
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: insighthub-api-pdb
+  namespace: insighthub-dev
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: insighthub
+      component: api

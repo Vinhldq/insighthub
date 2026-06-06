@@ -1,49 +1,53 @@
 {
   "mcpServers": {
     "filesystem": {
+      "type": "stdio",
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-filesystem@0.6.2",
-        "/home/tuantha/Documents/insighthub"
-      ]
+        "@modelcontextprotocol/server-filesystem@2026.1.14",
+        "C:/Study/DevOps/insighthubTest1"
+      ],
+      "env": {}
     },
     "docker": {
-      "command": "npx",
+      "type": "stdio",
+      "command": "docker",
       "args": [
-        "-y",
-        "@modelcontextprotocol/server-docker@0.5.0"
-      ]
+        "mcp",
+        "gateway",
+        "run"
+      ],
+      "env": {}
     },
     "kubernetes": {
+      "type": "stdio",
       "command": "npx",
       "args": [
         "-y",
-        "kubernetes-mcp-server@0.7.0",
+        "kubernetes-mcp-server@0.0.62",
         "--read-only"
       ],
-      "env": {
-        "KUBECONFIG": "/home/tuantha/.kube/mcp-viewer.kubeconfig"
-      }
+      "env": {}
     },
     "prometheus": {
+      "type": "stdio",
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-prometheus@0.5.0",
+        "@wkronmiller/prometheus-mcp-server@2.0.0",
         "--endpoint",
         "http://localhost:9090"
-      ]
+      ],
+      "env": {}
     },
     "aws": {
-      "command": "npx",
+      "type": "stdio",
+      "command": "uvx",
       "args": [
-        "-y",
-        "@modelcontextprotocol/server-aws@0.5.0"
+        "awslabs.aws-api-mcp-server@1.3.38"
       ],
-      "env": {
-        "AWS_PROFILE": "mcp-readonly"
-      }
+      "env": {}
     }
   }
 }
