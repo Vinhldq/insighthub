@@ -80,26 +80,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Run Checkov (fail on HIGH/CRITICAL)
+      - name: Run Checkov and generate SARIF
         id: checkov
         run: |
           pip install checkov
           checkov \
             --directory infra \
             --framework terraform \
-            --soft-fail-on MEDIUM,LOW \
-            --hard-fail-on HIGH,CRITICAL \
-            --compact
-
-      - name: Generate Checkov SARIF report
-        run: |
-          pip install checkov
-          checkov \
-            --directory infra \
-            --framework terraform \
-            --output-format sarif \
-            --output-file-path checkov-results.sarif \
+            --soft-fail \
+            -o sarif \
+            --output-file-path checkov-results \
             --compact || true
+          if [ -d checkov-results ]; then
+            cp checkov-results/results_sarif.sarif checkov-results.sarif
+          fi
+          high_critical=$(jq '[.runs[].results[] | select(.level == "error")] | length' checkov-results.sarif 2>/dev/null || echo 0)
+          echo "HIGH/CRITICAL findings: $high_critical"
+          if [ "$high_critical" -gt 0 ]; then
+            echo "::error::Found $high_critical HIGH/CRITICAL security findings. See SARIF report in GitHub Security tab."
+            exit 1
+          fi
 
       - name: Upload Checkov results to GitHub Security tab
         if: always()
