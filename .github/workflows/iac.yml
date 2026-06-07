@@ -80,7 +80,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Run Checkov
+      - name: Run Checkov (fail on HIGH/CRITICAL)
         id: checkov
         run: |
           pip install checkov
@@ -89,13 +89,21 @@ jobs:
             --framework terraform \
             --soft-fail-on MEDIUM,LOW \
             --hard-fail-on HIGH,CRITICAL \
-            --output-format sarif \
-            --output-file-path checkov-results.sarif \
             --compact
 
+      - name: Generate Checkov SARIF report
+        run: |
+          pip install checkov
+          checkov \
+            --directory infra \
+            --framework terraform \
+            --output-format sarif \
+            --output-file-path checkov-results.sarif \
+            --compact || true
+
       - name: Upload Checkov results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v4
         if: always()
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: checkov-results.sarif
           category: checkov
