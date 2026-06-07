@@ -1,0 +1,100 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "insighthub.fullname" . }}-postgres-init
+  namespace: {{ include "insighthub.namespace" . }}
+  labels:
+    {{- include "insighthub.labels" . | nindent 4 }}
+data:
+  init.sql: |
+    CREATE EXTENSION IF NOT EXISTS vector;
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "insighthub.fullname" . }}-postgres
+  namespace: {{ include "insighthub.namespace" . }}
+  labels:
+    {{- include "insighthub.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  serviceName: "insighthub-postgres"
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "insighthub.matchLabels" . | nindent 6 }}
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        {{- include "insighthub.matchLabels" . | nindent 8 }}
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.config.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.config.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: insighthub-secrets
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            {{- toYaml .Values.postgres.resources | nindent 12 }}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.config.username | quote }}]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: init-sql
+          configMap:
+            name: {{ include "insighthub.fullname" . }}-postgres-init
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "insighthub.matchLabels" . | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.postgres.persistence.storageClass }}
+        storageClassName: {{ .Values.postgres.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "insighthub.fullname" . }}-postgres
+  namespace: {{ include "insighthub.namespace" . }}
+  labels:
+    {{- include "insighthub.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    {{- include "insighthub.matchLabels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+{{- end }}

@@ -1,0 +1,272 @@
+{
+  "dashboard": {
+    "title": "InsightHub — AIOps Dashboard",
+    "uid": "insighthub-aiops",
+    "tags": ["insighthub", "aiops", "day4"],
+    "timezone": "browser",
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "RAG Query Rate (req/s)",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(rate(insighthub_http_requests_total{endpoint=\"/chat\",status=~\"2..\"}[5m]))",
+            "legendFormat": "requests/s",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "reqps",
+            "decimals": 2,
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 5, "color": "yellow" },
+                { "value": 20, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 }
+      },
+      {
+        "id": 2,
+        "title": "RAG Error Rate (%)",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(rate(insighthub_http_requests_total{endpoint=\"/chat\",status=~\"5..\"}[5m])) / sum(rate(insighthub_http_requests_total{endpoint=\"/chat\"}[5m])) * 100",
+            "legendFormat": "error_rate_%",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 1, "color": "yellow" },
+                { "value": 5, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 }
+      },
+      {
+        "id": 3,
+        "title": "RAG Query Latency p50 / p95 / p99",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(insighthub_rag_query_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(insighthub_rag_query_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(insighthub_rag_query_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          { "format": "s", "label": "Duration" },
+          { "format": "short" }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 }
+      },
+      {
+        "id": 4,
+        "title": "LLM Call Latency p95 (anomaly target)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(insighthub_llm_call_latency_seconds_bucket[5m])) by (le))",
+            "legendFormat": "p95 latency",
+            "refId": "A"
+          },
+          {
+            "expr": "insighthub_llm_call_latency_seconds:upper_band",
+            "legendFormat": "anomaly upper band",
+            "refId": "B"
+          },
+          {
+            "expr": "insighthub_llm_call_latency_seconds:baseline",
+            "legendFormat": "baseline",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          { "format": "s", "label": "Duration" },
+          { "format": "short" }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 }
+      },
+      {
+        "id": 5,
+        "title": "Ingestion Queue Depth",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "insighthub_documents_total{status=\"pending\"}",
+            "legendFormat": "pending docs",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "label": "Count" },
+          { "format": "short" }
+        ],
+        "gridPos": { "h": 8, "w": 6, "x": 0, "y": 14 }
+      },
+      {
+        "id": 6,
+        "title": "Documents by Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(insighthub_documents_total{status=~\"pending|ready|failed\"}) by (status)",
+            "legendFormat": "{{ status }}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "mappings": [
+              { "type": "value", "value": 0, "text": "0" }
+            ],
+            "color": { "mode": "background" }
+          }
+        },
+        "gridPos": { "h": 8, "w": 6, "x": 6, "y": 14 }
+      },
+      {
+        "id": 7,
+        "title": "LLM Token Usage (FinOps)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(insighthub_llm_tokens_total{direction=\"input\"}[5m]))",
+            "legendFormat": "input tokens/s",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(insighthub_llm_tokens_total{direction=\"output\"}[5m]))",
+            "legendFormat": "output tokens/s",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          { "format": "tokens", "label": "Tokens/s" },
+          { "format": "short" }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 }
+      },
+      {
+        "id": 8,
+        "title": "Ingestion Error Rate (anomaly target)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(insighthub_ingestion_errors_total[5m])",
+            "legendFormat": "errors/s",
+            "refId": "A"
+          },
+          {
+            "expr": "insighthub_ingestion_errors:upper_band",
+            "legendFormat": "anomaly upper band",
+            "refId": "B"
+          },
+          {
+            "expr": "insighthub_ingestion_errors:baseline",
+            "legendFormat": "baseline",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "label": "Errors/s" },
+          { "format": "short" }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 }
+      },
+      {
+        "id": 9,
+        "title": "HTTP Request Rate (RED — Rate)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(insighthub_http_requests_total[5m])) by (endpoint)",
+            "legendFormat": "{{ endpoint }}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "reqps", "label": "Requests/s" },
+          { "format": "short" }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 }
+      },
+      {
+        "id": 10,
+        "title": "Pod CPU Usage (USE — Utilization)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"insighthub\",container!=\"\"}[5m])) by (pod, container)",
+            "legendFormat": "{{ pod }}/{{ container }}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "percent", "label": "CPU", "max": 1 },
+          { "format": "short" }
+        ],
+        "gridPos": { "h": 8, "w": 6, "x": 0, "y": 30 }
+      },
+      {
+        "id": 11,
+        "title": "Pod Memory Usage (USE — Saturation)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(container_memory_usage_bytes{namespace=\"insighthub\",container!=\"\"}) by (pod, container)",
+            "legendFormat": "{{ pod }}/{{ container }}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "bytes", "label": "Memory" },
+          { "format": "short" }
+        ],
+        "gridPos": { "h": 8, "w": 6, "x": 6, "y": 30 }
+      },
+      {
+        "id": 12,
+        "title": "Deploy Annotations",
+        "type": "annotations",
+        "targets": [
+          {
+            "expr": "changes(kube_deployment_status_replicas_updated{namespace=\"insighthub\"}[1h]) > 0",
+            "legendFormat": "deploy update",
+            "refId": "A"
+          }
+        ],
+        "gridPos": { "h": 4, "w": 12, "x": 12, "y": 30 }
+      }
+    ],
+    "time": { "from": "now-6h", "to": "now" }
+  }
+}

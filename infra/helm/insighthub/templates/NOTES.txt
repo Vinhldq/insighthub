@@ -1,0 +1,10 @@
+{{- if .Values.postgres.enabled }}
+1. Get credentials:
+   export POSTGRES_PASSWORD=$(kubectl get secret insighthub-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)
+
+2. Port-forward:
+   kubectl port-forward -n {{ template "insighthub.namespace" . }} svc/{{ include "insighthub.fullname" . }}-postgres 5432:5432
+
+3. Connect:
+   psql -h localhost -U insighthub -d insighthub
+{{- end }}

@@ -1,0 +1,85 @@
+{{- if .Values.redis.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "insighthub.fullname" . }}-redis
+  namespace: {{ include "insighthub.namespace" . }}
+  labels:
+    {{- include "insighthub.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  serviceName: "insighthub-redis"
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "insighthub.matchLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        {{- include "insighthub.matchLabels" . | nindent 8 }}
+        app.kubernetes.io/component: redis
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          command:
+            - redis-server
+            - /etc/redis/redis.conf
+          args:
+            - --requirepass
+            - "$(REDIS_PASSWORD)"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: insighthub-secrets
+                  key: REDIS_PASSWORD
+          volumeMounts:
+            - name: config
+              mountPath: /etc/redis
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+          livenessProbe:
+            exec:
+              command: [redis-cli, ping]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: [redis-cli, ping]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: config
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "insighthub.fullname" . }}-redis
+  namespace: {{ include "insighthub.namespace" . }}
+  labels:
+    {{- include "insighthub.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+  selector:
+    {{- include "insighthub.matchLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+{{- end }}

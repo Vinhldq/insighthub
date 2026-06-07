@@ -188,22 +188,11 @@ curl -X POST http://localhost:8000/chat \
 
 ## References
 
-| Resource | URL/Path |
-|---|---|
-| Day 1 Lab Guide | `docs/lab-guides/Day1-AI-Coding-Agents.md` |
-| Day 2 Lab Guide | `docs/lab-guides/Day2-MCP-Protocol.md` |
-| Day 1 Spec | `Running-Project-Specification-Student.md` §5 |
-| Day 2 Spec | `Running-Project-Specification-Student.md` §6 |
-| Day 5 Spec | `Running-Project-Specification-Student.md` §9 |
-| Day 6 Spec | `Running-Project-Specification-Student.md` §10 |
-| Verify scripts | `scripts/verify-day-1.sh` … `verify-day-6.sh` |
+| Resource | Path |
+|----------|------|
 | DB schema | `infra/db/init.sql` |
 | K8s RBAC | `infra/k8s/mcp-readonly/` |
 | ARQ docs | https://arq-docs.helpmanual.io |
 | pgvector | https://github.com/pgvector/pgvector |
 | MCP spec | https://modelcontextprotocol.io |
-| Promptfoo | https://promptfoo.dev |
-| NeMo Guardrails | https://github.com/NVIDIA/NeMo-Guardrails |
-| LiteLLM | https://litellm.ai |
-| OWASP LLM Top 10 | https://owasp.org/www-project-top-10-for-large-language-model-applications |
-| AI prompt logs | `ai-prompts/day1.md` … `ai-prompts/day6.md` |
+| Verify scripts | `scripts/verify-day-1.sh` … `verify-day-7.sh` |

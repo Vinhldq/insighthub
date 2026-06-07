@@ -1,0 +1,140 @@
+# Default values for insighthub
+global:
+  environment: dev
+  project: insighthub
+
+namespace: insighthub-dev
+
+serviceAccount:
+  create: true
+  name: insighthub
+  annotations: {}
+
+postgres:
+  enabled: true
+  image:
+    repository: pgvector/pgvector
+    tag: "0.8.2-pg16"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  persistence:
+    size: 10Gi
+    storageClass: ""
+  config:
+    database: insighthub
+    username: insighthub
+    password: ""
+  initSql: |
+    CREATE EXTENSION IF NOT EXISTS vector;
+
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  persistence:
+    size: 5Gi
+    storageClass: ""
+  auth:
+    enabled: true
+    password: ""
+
+api:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: insighthub-api
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  ports:
+    http: 8000
+  probes:
+    liveness:
+      path: /healthz
+      initialDelaySeconds: 10
+      periodSeconds: 10
+    readiness:
+      path: /readyz
+      initialDelaySeconds: 5
+      periodSeconds: 5
+  env:
+    LLM_PROVIDER: gemini
+    EMBEDDING_PROVIDER: gemini
+    CHUNK_SIZE: "800"
+    CHUNK_OVERLAP: "100"
+    HNSW_EF_SEARCH: "100"
+  envFromSecret:
+    DATABASE_URL: insighthub-secrets
+    REDIS_URL: insighthub-secrets
+
+worker:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: insighthub-ingestion-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+web:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: insighthub-web
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  ports:
+    http: 3000
+
+autoscaling:
+  api:
+    minReplicas: 2
+    maxReplicas: 5
+    cpuTarget: 70
+    memoryTarget: 80
+
+pdb:
+  api:
+    minAvailable: 1
+
+secrets:
+  databaseUrl: "postgresql://insighthub:INSIGHTHUB_PASSWORD@{{ include \"insighthub.fullname\" . }}-postgres:5432/insighthub?sslmode=require"
+  redisUrl: "redis://:INSIGHTHUB_PASSWORD@{{ include \"insighthub.fullname\" . }}-redis:6379"
+  postgresPassword: "INSIGHTHUB_PASSWORD"
+  geminiApiKey: ""
+  anthropicApiKey: ""
+  deepseekApiKey: ""

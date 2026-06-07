@@ -1,29 +1,3 @@
-terraform {
-  required_version = ">= 1.0"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.27"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.5"
-    }
-  }
-
-  backend "s3" {
-    bucket         = "insighthub-terraform-state"
-    key            = "insighthub/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
-  }
-}
-
 provider "aws" {
   region = var.aws_region
 
@@ -32,14 +6,12 @@ provider "aws" {
       Project     = "insighthub"
       Environment = var.environment
       Owner       = "platform-team"
-      CostCenter  = "engineering"
       ManagedBy   = "terraform"
-      CreatedDate = timestamp()
+      CostCenter  = "engineering"
     }
   }
 }
 
-# Data source to get existing EKS cluster
 data "aws_eks_cluster" "main" {
   name = var.cluster_name
 }

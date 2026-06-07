@@ -1,0 +1,121 @@
+{
+  "incident_id": "incident-001",
+  "title": "LLM Latency Spike — LLM Provider Degradation",
+  "severity": "warning",
+  "detected_at": "2026-06-06T14:32:00Z",
+  "resolved_at": "2026-06-06T15:10:00Z",
+  "duration_minutes": 38,
+  "status": "resolved",
+  "symptoms": [
+    {
+      "timestamp": "2026-06-06T14:32:00Z",
+      "description": "P95 LLM call latency tăng từ baseline 1.2s lên 8.7s",
+      "metric": "insighthub_llm_call_latency_seconds",
+      "observed_value": "8.7s (p95)",
+      "baseline": "1.2s (p95)"
+    },
+    {
+      "timestamp": "2026-06-06T14:33:00Z",
+      "description": "RAG query latency p95 tăng theo, từ 2.1s lên 12.3s",
+      "metric": "insighthub_rag_query_latency_seconds",
+      "observed_value": "12.3s (p95)",
+      "baseline": "2.1s (p95)"
+    },
+    {
+      "timestamp": "2026-06-06T14:34:00Z",
+      "description": "HTTP 504 errors xuất hiện trên endpoint /chat",
+      "metric": "insighthub_http_requests_total{status=\"504\"}",
+      "observed_value": "12 errors/min",
+      "baseline": "0 errors/min"
+    }
+  ],
+  "top_hypotheses": [
+    {
+      "rank": 1,
+      "hypothesis": "LLM provider (Gemini) có degradation hoặc rate limit",
+      "confidence": "high",
+      "evidence": [
+        {
+          "metric": "insighthub_llm_call_latency_seconds:anomaly_score",
+          "value": "7.4 (vượt ngưỡng 3σ)",
+          "timestamp": "2026-06-06T14:32:00Z",
+          "note": "Anomaly score cao nhất trong 30 ngày qua"
+        },
+        {
+          "metric": "insighthub_llm_call_latency_seconds:upper_band",
+          "value": "4.8s",
+          "timestamp": "2026-06-06T14:32:00Z",
+          "note": "Observed 8.7s vượt xa upper band 4.8s"
+        },
+        {
+          "metric": "insighthub_llm_tokens_total{direction=\"input\"}",
+          "value": "Không thay đổi đáng kể so với baseline",
+          "timestamp": "2026-06-06T14:32:00Z",
+          "note": "Request volume ổn định → không phải do traffic spike. Vấn đề bên phía provider."
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "hypothesis": "Network latency tăng giữa API và LLM provider endpoint",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "metric": "insighthub_llm_call_latency_seconds",
+          "value": "8.7s p95 vs baseline 1.2s — tăng 7.25x",
+          "timestamp": "2026-06-06T14:32:00Z",
+          "note": "Tăng đột biến không tương ứng với token count → khả năng network"
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "hypothesis": "Database query chậm làm tăng tổng RAG latency",
+      "confidence": "low",
+      "evidence": [
+        {
+          "metric": "insighthub_rag_query_latency_seconds",
+          "value": "12.3s p95",
+          "timestamp": "2026-06-06T14:34:00Z",
+          "note": "Nhưng insighthub_llm_call_latency_seconds chiếm phần lớn → LLM là bottleneck chính"
+        }
+      ]
+    }
+  ],
+  "root_cause": {
+    "confirmed": "LLM provider (Gemini) degradation — response time tăng đột biến 7.25x so với baseline",
+    "category": "external_dependency",
+    "details": "Prometheus anomaly detection phát hiện insighthub_llm_call_latency_seconds:anomaly_score = 7.4 (vượt ngưỡng 3σ). Token input rate không đổi → traffic bình thường. LLM call latency tăng từ 1.2s lên 8.7s xác nhận provider-side issue."
+  },
+  "impact_scope": {
+    "services_affected": ["api"],
+    "users_affected": "Tất cả users truy vấn /chat trong 38 phút",
+    "error_rate_peak": "12 errors/min (HTTP 504)",
+    "slo_breach": "P95 latency breach > 30s threshold"
+  },
+  "remediation": [
+    {
+      "step": 1,
+      "action": "Kiểm tra Gemini provider status page",
+      "status": "done",
+      "note": "Provider xác nhận degradation khu vực ap-southeast-1"
+    },
+    {
+      "step": 2,
+      "action": "Switch sang Anthropic provider (fallback)",
+      "status": "done",
+      "note": "Cập nhật LLM_CLIENT provider sang anthropic, latency trở về 1.5s p95"
+    },
+    {
+      "step": 3,
+      "action": "Monitor 15 phút sau switch — xác nhận latency trở về baseline",
+      "status": "done",
+      "note": "P95 về 1.3s, trong ngưỡng baseline 1.2±0.3s"
+    }
+  ],
+  "prevention": [
+    "Thêm circuit breaker cho LLM provider calls — tự động switch sang fallback provider khi latency > 2x baseline",
+    "Configure multi-provider failover trong LLMClient (đã có skeleton, cần implement)",
+    "Thêm synthetic monitor cho LLM endpoint — ping mỗi 60s để phát hiện degradation sớm hơn"
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "incident_id": "incident-003",
+  "title": "Error Burst — Database Connection Pool Exhaustion",
+  "severity": "critical",
+  "detected_at": "2026-06-06T18:10:00Z",
+  "resolved_at": "2026-06-06T18:35:00Z",
+  "duration_minutes": 25,
+  "status": "resolved",
+  "symptoms": [
+    {
+      "timestamp": "2026-06-06T18:10:00Z",
+      "description": "HTTP 500 errors bùng nổ trên cả /documents và /chat endpoints",
+      "metric": "insighthub_http_requests_total{status=\"500\"}",
+      "observed_value": "45 errors/min",
+      "baseline": "0-2 errors/min"
+    },
+    {
+      "timestamp": "2026-06-06T18:10:30Z",
+      "description": "Ingestion errors tăng từ 0 lên 25/min",
+      "metric": "insighthub_ingestion_errors_total",
+      "observed_value": "25 errors/min",
+      "baseline": "0-1 errors/min"
+    },
+    {
+      "timestamp": "2026-06-06T18:11:00Z",
+      "description": "P95 RAG query latency tăng từ 2.1s lên 15.8s rồi timeout",
+      "metric": "insighthub_rag_query_latency_seconds",
+      "observed_value": "15.8s (throttled by timeout)",
+      "baseline": "2.1s (p95)"
+    },
+    {
+      "timestamp": "2026-06-06T18:12:00Z",
+      "description": "RDS connection count chạm ngưỡng max",
+      "metric": "rds_connections (cloudwatch)",
+      "observed_value": "98/100 connections",
+      "baseline": "15-25 connections"
+    }
+  ],
+  "top_hypotheses": [
+    {
+      "rank": 1,
+      "hypothesis": "Connection pool exhaustion — kết nối DB không được release sau query",
+      "confidence": "high",
+      "evidence": [
+        {
+          "metric": "rds_connections",
+          "value": "98/100 (98% utilization)",
+          "timestamp": "2026-06-06T18:12:00Z",
+          "note": "Gần chạm max_connections → new connections bị reject → 500 errors"
+        },
+        {
+          "metric": "insighthub_http_requests_total{status=\"500\"}",
+          "value": "45 errors/min correlated with rds_connections peak",
+          "timestamp": "2026-06-06T18:10:00Z",
+          "note": "Error burst starts exactly when connections hit 90+"
+        },
+        {
+          "metric": "insighthub_ingestion_errors:anomaly_score",
+          "value": "8.1 (vượt ngưỡng 3σ)",
+          "timestamp": "2026-06-06T18:10:30Z",
+          "note": "Anomaly score cao nhất trong 30 ngày cho ingestion errors"
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "hypothesis": "Long-running query chiếm connection pool",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "metric": "rds_cpu (cloudwatch)",
+          "value": "92%",
+          "timestamp": "2026-06-06T18:11:00Z",
+          "note": "CPU cao → có slow query"
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "hypothesis": "Connection leak do worker không close session sau khi xử lý",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "metric": "kube_pod_restart_count{pod=~\"api.*\"}",
+          "value": "0 (pod không restart)",
+          "timestamp": "2026-06-06T18:10:00Z",
+          "note": "Nếu là code bug (connection leak) → connections tăng dần, không reset sau pod restart"
+        }
+      ]
+    }
+  ],
+  "root_cause": {
+    "confirmed": "Database connection pool exhaustion — 98/100 connections consumed, new connections rejected → 500 errors burst. Nguyên nhân trực tiếp: connection leak trong ingestion worker khi process batch PDF lớn (connection không được release sau transaction).",
+    "category": "resource_exhaustion",
+    "details": "Prometheus + CloudWatch metrics cho thấy: (1) RDS connections tăng từ 25 lên 98 trong 2 phút, (2) error rate tăng tương ứng, (3) anomaly score cho ingestion errors = 8.1 (cao nhất 30 ngày). Worker OOMKilled trước đó (incident-002) có thể đã để lại zombie connections."
+  },
+  "impact_scope": {
+    "services_affected": ["api", "ingestion-worker", "postgres (RDS)"],
+    "users_affected": "Tất cả users — cả upload và chat đều fail với 500",
+    "error_rate_peak": "45 errors/min (HTTP 500)",
+    "slo_breach": "Availability SLO breach — 25 phút full outage cho write path"
+  },
+  "remediation": [
+    {
+      "step": 1,
+      "action": "Kill zombie connections trên RDS",
+      "status": "done",
+      "note": "SELECT pg_terminate_backend(pid) WHERE state = 'idle in transaction' AND query_start < now() - interval '5 minutes'"
+    },
+    {
+      "step": 2,
+      "action": "Restart API + worker pods — reset connection pools",
+      "status": "done",
+      "note": "Rolling restart: connections về 15-25, error rate về 0"
+    },
+    {
+      "step": 3,
+      "action": "Tăng max_connections trên RDS từ 100 lên 200",
+      "status": "done",
+      "note": "Parameter group: max_connections = 200"
+    },
+    {
+      "step": 4,
+      "action": "Thêm connection pool monitoring — alert khi > 80% utilization",
+      "status": "done",
+      "note": "CloudWatch alarm: rds_connections > 160 → SNS → Slack"
+    }
+  ],
+  "correlation_with_other_incidents": "Có thể liên quan đến incident-002 (worker OOMKilled). Zombie connections từ worker crash có thể tích tụ trong pool. Hai incidents xảy ra trong cùng 1.5 giờ → khả năng cascade failure.",
+  "prevention": [
+    "Implement connection pool với timeout: pgbouncer hoặc asyncpg connection pool với idle_in_transaction_session_timeout",
+    "Thêm circuit breaker: khi connections > 80% → reject new requests gracefully thay vì 500",
+    "Fix connection leak trong worker: đảm bảo session.close() trong finally block",
+    "RDS Proxy: thêm RDS Proxy giữa app và RDS để pool management tự động"
+  ]
+}

@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Replacement for the jq-dependent JSON validation section
+# Adds Python/Node fallback for Windows where jq is unavailable
+
+validate_json() {
+  if command -v jq >/dev/null 2>&1; then
+    jq empty .mcp.json 2>/dev/null
+  elif command -v python >/dev/null 2>&1; then
+    python -c "import json; json.load(open('.mcp.json'))" 2>/dev/null
+  elif command -v node >/dev/null 2>&1; then
+    node -e "JSON.parse(require('fs').readFileSync('.mcp.json','utf8'))" 2>/dev/null
+  else
+    return 1
+  fi
+}
+
+json_count() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '.mcpServers|length' .mcp.json 2>/dev/null
+  elif command -v python >/dev/null 2>&1; then
+    python -c "import json; d=json.load(open('.mcp.json')); print(len(d.get('mcpServers',{})))" 2>/dev/null
+  fi
+}
+
+json_unpinned() {
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '.mcpServers[].args[]?' .mcp.json 2>/dev/null | grep -qE '@latest|@main'
+  elif command -v python >/dev/null 2>&1; then
+    python -c "import json;d=json.load(open('.mcp.json'));[print(a)for s in d.get('mcpServers',{}).values()for a in s.get('args',[])if'@latest'in a or'@main'in a]" 2>/dev/null | grep -q .
+  fi
+}
+
+# .mcp.json valid + >=4 servers
+if [ -f .mcp.json ]; then
+if validate_json; then
+  ok ".mcp.json valid JSON"
+  COUNT=$(json_count)
+  if [ "$COUNT" -ge 4 ] 2>/dev/null; then
+    ok ".mcp.json co $COUNT MCP server (>=4)"
+  else
+    ng ".mcp.json chi co ${COUNT:-?} server (can >=4)"
+  fi
+  if json_unpinned; then
+    ng "Co server dung @latest hoac @main (KHONG pin version)"
+  else
+    ok "Tat ca MCP server version pinned"
+  fi
+else
+  ng ".mcp.json khong valid JSON"
+fi
+else
+  ng ".mcp.json khong ton tai"
+fi

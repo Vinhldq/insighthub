@@ -1,0 +1,29 @@
+# terraform.tfvars.example - Example variable values
+# Copy to terraform.tfvars and fill with your actual values
+
+aws_region      = "us-east-1"
+environment     = "dev"
+cluster_name    = "insighthub-cluster"
+vpc_id          = "vpc-xxxxxxxxx"
+private_subnet_ids = [
+  "subnet-xxxxxxxxx",
+  "subnet-yyyyyyyyy"
+]
+
+rds_instance_class     = "db.t3.micro"
+rds_allocated_storage  = 20
+rds_database_name      = "insighthub"
+rds_master_username    = "insighthub"
+
+redis_node_type        = "cache.t3.micro"
+redis_num_cache_nodes  = 1
+
+enable_encryption      = true
+enable_multi_az        = false
+
+tags = {
+  Project     = "insighthub"
+  Environment = "dev"
+  Owner       = "platform-team"
+  CostCenter  = "engineering"
+}
