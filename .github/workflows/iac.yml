@@ -19,6 +19,7 @@ env:
   AWS_REGION: us-east-1
   TF_VERSION: 1.9.0
   TERRAFORM_STATE_BUCKET: insighthub-terraform-state
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   id-token: write
@@ -26,7 +27,6 @@ permissions:
   pull-requests: write
 
 jobs:
-  # Stage 1: Formatting check
   fmt:
     name: Terraform Format
     runs-on: ubuntu-latest
@@ -44,7 +44,6 @@ jobs:
           cd infra
           terraform fmt -check -recursive
 
-  # Stage 2: Linting
   lint:
     name: Terraform Lint
     runs-on: ubuntu-latest
@@ -59,7 +58,7 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v5
+        uses: terraform-linters/setup-tflint@v4
         with:
           tflint_version: latest
 
@@ -73,7 +72,6 @@ jobs:
           cd infra
           tflint --recursive --format compact
 
-  # Stage 3: Security Scanning (Checkov)
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
@@ -84,23 +82,24 @@ jobs:
 
       - name: Run Checkov
         id: checkov
-        uses: bridgecrewio/checkov-action@v3
-        with:
-          directory: infra/
-          soft_fail_on: MEDIUM,LOW
-          hard_fail_on: HIGH,CRITICAL
-          framework: terraform
-          output_format: sarif
-          output_file_path: checkov-results.sarif
+        run: |
+          pip install checkov
+          checkov \
+            --directory infra \
+            --framework terraform \
+            --soft-fail-on MEDIUM,LOW \
+            --hard-fail-on HIGH,CRITICAL \
+            --output-format sarif \
+            --output-file-path checkov-results.sarif \
+            --compact
 
       - name: Upload Checkov results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: checkov-results.sarif
           category: checkov
 
-  # Stage 4: Terraform Validation & Plan
   validate-and-plan:
     name: Terraform Validate & Plan
     runs-on: ubuntu-latest
@@ -188,7 +187,6 @@ jobs:
           name: tfplan
           path: infra/tfplan
 
-  # Stage 5: Cost Estimation (PR only)
   cost-estimate:
     name: Cost Estimate
     runs-on: ubuntu-latest
@@ -208,7 +206,6 @@ jobs:
           cd infra
           infracost breakdown --path . --format table
 
-  # Stage 6: Apply (Manual approval, main branch only)
   apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
