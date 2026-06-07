@@ -32,10 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v5
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -43,7 +43,6 @@ jobs:
         run: |
           cd infra
           terraform fmt -check -recursive
-        continue-on-error: false
 
   # Stage 2: Linting
   lint:
@@ -52,15 +51,15 @@ jobs:
     needs: fmt
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v5
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v5
         with:
           tflint_version: latest
 
@@ -73,7 +72,6 @@ jobs:
         run: |
           cd infra
           tflint --recursive --format compact
-        continue-on-error: false
 
   # Stage 3: Security Scanning (Checkov)
   security-scan:
@@ -82,21 +80,21 @@ jobs:
     needs: lint
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run Checkov
         id: checkov
-        uses: bridgecrewio/checkov-action@master
+        uses: bridgecrewio/checkov-action@v3
         with:
           directory: infra/
-          soft-fail-on: MEDIUM,LOW
-          hard-fail-on: HIGH,CRITICAL
+          soft_fail_on: MEDIUM,LOW
+          hard_fail_on: HIGH,CRITICAL
           framework: terraform
-          output-format: sarif
-          output-file-path: checkov-results.sarif
+          output_format: sarif
+          output_file_path: checkov-results.sarif
 
       - name: Upload Checkov results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: checkov-results.sarif
@@ -109,10 +107,10 @@ jobs:
     needs: security-scan
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v5
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -126,11 +124,11 @@ jobs:
         run: |
           cd infra
           terraform init \
-            -backend-config="bucket=${{ env.TERRAFORM_STATE_BUCKET }}" \
-            -backend-config="key=insighthub/terraform.tfstate" \
-            -backend-config="region=${{ env.AWS_REGION }}" \
-            -backend-config="dynamodb_table=terraform-locks" \
-            -backend-config="encrypt=true"
+          -backend-config="bucket=${{ env.TERRAFORM_STATE_BUCKET }}" \
+          -backend-config="key=insighthub/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=terraform-locks" \
+          -backend-config="encrypt=true"
 
       - name: Terraform Validate
         run: |
@@ -141,15 +139,15 @@ jobs:
         run: |
           cd infra
           cat > terraform.tfvars <<EOF
-          aws_region           = "${{ env.AWS_REGION }}"
-          environment          = "${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}"
-          cluster_name         = "${{ secrets.EKS_CLUSTER_NAME }}"
-          vpc_id               = "${{ secrets.VPC_ID }}"
-          private_subnet_ids   = ${{ secrets.PRIVATE_SUBNET_IDS }}
-          rds_instance_class   = "${{ github.ref == 'refs/heads/main' && 'db.t3.small' || 'db.t3.micro' }}"
-          redis_node_type      = "${{ github.ref == 'refs/heads/main' && 'cache.t3.small' || 'cache.t3.micro' }}"
-          enable_multi_az      = ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
-          enable_encryption    = true
+          aws_region = "${{ env.AWS_REGION }}"
+          environment = "${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}"
+          cluster_name = "${{ secrets.EKS_CLUSTER_NAME }}"
+          vpc_id = "${{ secrets.VPC_ID }}"
+          private_subnet_ids = jsondecode("${{ secrets.PRIVATE_SUBNET_IDS }}")
+          rds_instance_class = "${{ github.ref == 'refs/heads/main' && 'db.t3.small' || 'db.t3.micro' }}"
+          redis_node_type = "${{ github.ref == 'refs/heads/main' && 'cache.t3.small' || 'cache.t3.micro' }}"
+          enable_multi_az = ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
+          enable_encryption = true
           EOF
 
       - name: Terraform Plan
@@ -157,7 +155,6 @@ jobs:
         run: |
           cd infra
           terraform plan -out=tfplan -no-color | tee plan-output.txt
-        continue-on-error: true
 
       - name: Generate Plan Summary
         if: github.event_name == 'pull_request'
@@ -165,9 +162,9 @@ jobs:
           cd infra
           echo "## Terraform Plan Summary" > /tmp/plan-summary.md
           echo "" >> /tmp/plan-summary.md
-          echo "\`\`\`" >> /tmp/plan-summary.md
+          echo '```' >> /tmp/plan-summary.md
           tail -20 plan-output.txt >> /tmp/plan-summary.md
-          echo "\`\`\`" >> /tmp/plan-summary.md
+          echo '```' >> /tmp/plan-summary.md
           cat /tmp/plan-summary.md
 
       - name: Comment PR with Plan
@@ -191,7 +188,7 @@ jobs:
           name: tfplan
           path: infra/tfplan
 
-  # Stage 5: Cost Estimation (Optional)
+  # Stage 5: Cost Estimation (PR only)
   cost-estimate:
     name: Cost Estimate
     runs-on: ubuntu-latest
@@ -199,7 +196,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Infracost
         uses: infracost/actions/setup@v2
@@ -219,13 +216,13 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment:
       name: production
-  
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v5
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -239,25 +236,31 @@ jobs:
         run: |
           cd infra
           terraform init \
-            -backend-config="bucket=${{ env.TERRAFORM_STATE_BUCKET }}" \
-            -backend-config="key=insighthub/terraform.tfstate" \
-            -backend-config="region=${{ env.AWS_REGION }}" \
-            -backend-config="dynamodb_table=terraform-locks" \
-            -backend-config="encrypt=true"
+          -backend-config="bucket=${{ env.TERRAFORM_STATE_BUCKET }}" \
+          -backend-config="key=insighthub/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=terraform-locks" \
+          -backend-config="encrypt=true"
+
+      - name: Download Plan Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: infra/
 
       - name: Create tfvars from secrets
         run: |
           cd infra
           cat > terraform.tfvars <<EOF
-          aws_region           = "${{ env.AWS_REGION }}"
-          environment          = "prod"
-          cluster_name         = "${{ secrets.EKS_CLUSTER_NAME }}"
-          vpc_id               = "${{ secrets.VPC_ID }}"
-          private_subnet_ids   = ${{ secrets.PRIVATE_SUBNET_IDS }}
-          rds_instance_class   = "db.t3.small"
-          redis_node_type      = "cache.t3.small"
-          enable_multi_az      = true
-          enable_encryption    = true
+          aws_region = "${{ env.AWS_REGION }}"
+          environment = "prod"
+          cluster_name = "${{ secrets.EKS_CLUSTER_NAME }}"
+          vpc_id = "${{ secrets.VPC_ID }}"
+          private_subnet_ids = jsondecode("${{ secrets.PRIVATE_SUBNET_IDS }}")
+          rds_instance_class = "db.t3.small"
+          redis_node_type = "cache.t3.small"
+          enable_multi_az = true
+          enable_encryption = true
           EOF
 
       - name: Terraform Apply
