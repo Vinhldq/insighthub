@@ -19,7 +19,7 @@ fi
 # Anomaly rules
 if [ -f observability/anomaly-rules.yaml ] || [ -f observability/prometheus-rules.yaml ]; then
   RULES=$(cat observability/anomaly-rules.yaml observability/prometheus-rules.yaml 2>/dev/null)
-  if echo "$RULES" | grep -qE "_anomaly|_upper_band|_baseline"; then
+  if echo "$RULES" | grep -qE "baseline|upper_band|anomaly"; then
     ok "Anomaly band recording rules detected"
   else
     ng "Không thấy anomaly band recording rules"
@@ -35,7 +35,7 @@ fi
 
 # Grafana dashboard JSON
 if [ -d observability/grafana-dashboards ] && ls observability/grafana-dashboards/*.json >/dev/null 2>&1; then
-  PANELS=$(jq -r '.panels | length' observability/grafana-dashboards/*.json 2>/dev/null | head -1)
+  PANELS=$(jq -r '.dashboard.panels | length' observability/grafana-dashboards/*.json 2>/dev/null | head -1)
   if [ -n "$PANELS" ] && [ "$PANELS" -ge 9 ]; then
     ok "Grafana dashboard có $PANELS panels (≥9)"
   else

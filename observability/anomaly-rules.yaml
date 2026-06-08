@@ -1,0 +1,172 @@
+# InsightHub — Anomaly Detection Rules
+# Strategy: adaptive (mean + stddev, 26h smoothing window)
+# Based on: grafana/promql-anomaly-detection framework
+# Requires: Prometheus recording rules + Alertmanager
+
+groups:
+  # ── Recording rules: anomaly bands ──────────────────────────────────────
+
+  - name: insighthub.anomaly_bands
+    interval: 1m
+    rules:
+      # ── LLM call latency ────────────────────────────────────────────────
+      - record: insighthub_llm_call_latency_seconds:baseline
+        expr: avg_over_time(
+          histogram_quantile(0.95,
+            sum(rate(insighthub_llm_call_latency_seconds_bucket[5m])) by (le)
+          )[26h:1m]
+        )
+
+      - record: insighthub_llm_call_latency_seconds:stddev
+        expr: stddev_over_time(
+          histogram_quantile(0.95,
+            sum(rate(insighthub_llm_call_latency_seconds_bucket[5m])) by (le)
+          )[26h:1m]
+        )
+
+      - record: insighthub_llm_call_latency_seconds:upper_band
+        expr: >-
+          insighthub_llm_call_latency_seconds:baseline
+          + clamp_max(
+              (insighthub_llm_call_latency_seconds:stddev * 3),
+              10
+            )
+
+      - record: insighthub_llm_call_latency_seconds:lower_band
+        expr: >-
+          insighthub_llm_call_latency_seconds:baseline
+          * 0.5
+
+      - record: insighthub_llm_call_latency_seconds:anomaly_score
+        expr: >-
+          (
+            histogram_quantile(0.95,
+              sum(rate(insighthub_llm_call_latency_seconds_bucket[5m])) by (le)
+            )
+            - insighthub_llm_call_latency_seconds:baseline
+          )
+          / clamp_max(insighthub_llm_call_latency_seconds:stddev, 0.001)
+
+      # ── Ingestion errors ─────────────────────────────────────────────────
+      - record: insighthub_ingestion_errors:baseline
+        expr: avg_over_time(
+          sum(rate(insighthub_ingestion_errors_total[5m]))[26h:1m]
+        )
+
+      - record: insighthub_ingestion_errors:stddev
+        expr: stddev_over_time(
+          sum(rate(insighthub_ingestion_errors_total[5m]))[26h:1m]
+        )
+
+      - record: insighthub_ingestion_errors:upper_band
+        expr: >-
+          insighthub_ingestion_errors:baseline
+          + clamp_max(
+              (insighthub_ingestion_errors:stddev * 3),
+              5
+            )
+
+      - record: insighthub_ingestion_errors:anomaly_score
+        expr: >-
+          (
+            sum(rate(insighthub_ingestion_errors_total[5m]))
+            - insighthub_ingestion_errors:baseline
+          )
+          / clamp_max(insighthub_ingestion_errors:stddev, 0.001)
+
+      # ── RAG query latency ────────────────────────────────────────────────
+      - record: insighthub_rag_query_latency_seconds:baseline
+        expr: avg_over_time(
+          histogram_quantile(0.95,
+            sum(rate(insighthub_rag_query_latency_seconds_bucket[5m])) by (le)
+          )[26h:1m]
+        )
+
+      - record: insighthub_rag_query_latency_seconds:stddev
+        expr: stddev_over_time(
+          histogram_quantile(0.95,
+            sum(rate(insighthub_rag_query_latency_seconds_bucket[5m])) by (le)
+          )[26h:1m]
+        )
+
+      - record: insighthub_rag_query_latency_seconds:upper_band
+        expr: >-
+          insighthub_rag_query_latency_seconds:baseline
+          + clamp_max(
+              (insighthub_rag_query_latency_seconds:stddev * 3),
+              15
+            )
+
+      - record: insighthub_rag_query_latency_seconds:anomaly_score
+        expr: >-
+          (
+            histogram_quantile(0.95,
+              sum(rate(insighthub_rag_query_latency_seconds_bucket[5m])) by (le)
+            )
+            - insighthub_rag_query_latency_seconds:baseline
+          )
+          / clamp_max(insighthub_rag_query_latency_seconds:stddev, 0.001)
+
+  # ── Alerting rules ──────────────────────────────────────────────────────
+
+  - name: insighthub.anomaly_alerts
+    interval: 30s
+    rules:
+      - alert: InsightHubLLMLatencyAnomaly
+        expr: >-
+          insighthub_llm_call_latency_seconds:anomaly_score > 3
+          and
+          histogram_quantile(0.95,
+            sum(rate(insighthub_llm_call_latency_seconds_bucket[5m])) by (le)
+          ) > insighthub_llm_call_latency_seconds:upper_band
+        for: 2m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: >-
+            LLM latency anomalous (score={{ $value | humanize }})
+          description: >-
+            P95 LLM latency đã vượt anomaly upper band.
+            Baseline={{ $labels.baseline | humanizeDuration }},
+            Upper band={{ $labels.upper_band | humanizeDuration }}.
+            Kiểm tra provider status, network latency, hoặc token count bất thường.
+
+      - alert: InsightHubIngestionErrorBurst
+        expr: >-
+          insighthub_ingestion_errors:anomaly_score > 3
+          and
+          sum(rate(insighthub_ingestion_errors_total[5m]))
+          > insighthub_ingestion_errors:upper_band
+        for: 2m
+        labels:
+          severity: warning
+          component: ingestion-worker
+        annotations:
+          summary: >-
+            Ingestion error burst (score={{ $value | humanize }})
+          description: >-
+            Error rate vượt anomaly upper band.
+            Baseline={{ $labels.baseline | humanize }}/s,
+            Upper band={{ $labels.upper_band | humanize }}/s.
+            Kiểm tra DB connectivity, embedding provider, và worker logs.
+
+      - alert: InsightHubRAGQueryLatencyAnomaly
+        expr: >-
+          insighthub_rag_query_latency_seconds:anomaly_score > 3
+          and
+          histogram_quantile(0.95,
+            sum(rate(insighthub_rag_query_latency_seconds_bucket[5m])) by (le)
+          ) > insighthub_rag_query_latency_seconds:upper_band
+        for: 3m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: >-
+            RAG query latency anomalous (score={{ $value | humanize }})
+          description: >-
+            P95 RAG latency đã vượt anomaly upper band.
+            Baseline={{ $labels.baseline | humanizeDuration }},
+            Upper band={{ $labels.upper_band | humanizeDuration }}.
+            Kiểm tra pgvector query plan, connection pool, hoặc LLM provider latency.

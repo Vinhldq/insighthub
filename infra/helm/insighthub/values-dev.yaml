@@ -1,0 +1,63 @@
+# Development overrides — cheaper instance types, no Multi-AZ
+global:
+  environment: dev
+
+postgres:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  persistence:
+    size: 5Gi
+
+redis:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  persistence:
+    size: 2Gi
+
+api:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+worker:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+web:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+secrets:
+  databaseUrl: "postgresql://insighthub:INSIGHTHUB_PASSWORD@{{ include \"insighthub.fullname\" . }}-postgres:5432/insighthub?sslmode=require"
+  redisUrl: "redis://:INSIGHTHUB_PASSWORD@{{ include \"insighthub.fullname\" . }}-redis:6379"
+  postgresPassword: "INSIGHTHUB_PASSWORD"
+  geminiApiKey: ""
+  anthropicApiKey: ""
+  deepseekApiKey: ""

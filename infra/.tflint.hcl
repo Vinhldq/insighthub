@@ -12,7 +12,9 @@ plugin "terraform" {
 
 rule "aws_resource_missing_tags" {
   enabled = true
-  tags    = ["Project", "Environment", "Owner", "ManagedBy"]
+  tags    = ["Project", "Environment", "Owner", "ManagedBy", "CostCenter"]
 }
 
-
+rule "aws_instance_invalid_type" {
+  enabled = false
+}

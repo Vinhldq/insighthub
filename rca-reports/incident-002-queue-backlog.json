@@ -1,0 +1,122 @@
+{
+  "incident_id": "incident-002",
+  "title": "Ingestion Queue Backlog — Worker Down",
+  "severity": "warning",
+  "detected_at": "2026-06-06T16:45:00Z",
+  "resolved_at": "2026-06-06T17:20:00Z",
+  "duration_minutes": 35,
+  "status": "resolved",
+  "symptoms": [
+    {
+      "timestamp": "2026-06-06T16:45:00Z",
+      "description": "Số documents pending tăng đột biến từ 0 lên 47",
+      "metric": "insighthub_documents_total{status=\"pending\"}",
+      "observed_value": "47 pending docs",
+      "baseline": "0-2 pending docs"
+    },
+    {
+      "timestamp": "2026-06-06T16:47:00Z",
+      "description": "Ingestion worker pod không có log mới trong 10 phút",
+      "metric": "kube_pod_status_phase{pod=~\"ingestion-worker.*\", phase=\"Running\"}",
+      "observed_value": "Pod Running nhưng logs tĩnh",
+      "baseline": "Logs mới mỗi 5-30s"
+    },
+    {
+      "timestamp": "2026-06-06T16:50:00Z",
+      "description": "Redis queue length tăng lên 47",
+      "metric": "arq_queue_jobs_pending (inferred from documents_total pending)",
+      "observed_value": "47 jobs stuck",
+      "baseline": "0-2 jobs"
+    },
+    {
+      "timestamp": "2026-06-06T17:05:00Z",
+      "description": "User upload document mới → document count tăng nhưng không có ready status mới",
+      "metric": "insighthub_documents_total{status=\"ready\"}",
+      "observed_value": "Không tăng trong 20 phút",
+      "baseline": "+1 mỗi 30-60s"
+    }
+  ],
+  "top_hypotheses": [
+    {
+      "rank": 1,
+      "hypothesis": "Ingestion worker pod bị OOMKilled hoặc crash",
+      "confidence": "high",
+      "evidence": [
+        {
+          "metric": "kube_pod_status_reason{pod=~\"ingestion-worker.*\", reason=\"OOMKilled\"}",
+          "value": "1 (OOMKilled detected)",
+          "timestamp": "2026-06-06T16:42:00Z",
+          "note": "Worker xử lý batch PDF lớn → memory vượt limit → OOMKilled"
+        },
+        {
+          "metric": "insighthub_documents_total{status=\"pending\"}",
+          "value": "47 pending docs accumulated over 3 minutes",
+          "timestamp": "2026-06-06T16:45:00Z",
+          "note": "Tốc độ accumulate = ~15 docs/min → worker down trong ~3 min sau OOMKill"
+        },
+        {
+          "metric": "kube_pod_container_status_terminated_reason{pod=~\"ingestion-worker.*\"}",
+          "value": "OOMKilled",
+          "timestamp": "2026-06-06T16:42:00Z",
+          "note": "Container terminated reason xác nhận OOM"
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "hypothesis": "Worker bị deadlock khi process PDF lớn",
+      "confidence": "medium",
+      "evidence": [
+        {
+          "metric": "insight_worker_active_threads",
+          "value": "1 thread stuck > 30min",
+          "timestamp": "2026-06-06T16:45:00Z",
+          "note": "Nếu có thread gauge metric"
+        }
+      ]
+    }
+  ],
+  "root_cause": {
+    "confirmed": "Ingestion worker OOMKilled khi xử lý batch PDF lớn (15+ files) đồng thời — memory limit 512MB không đủ",
+    "category": "resource_exhaustion",
+    "details": "Prometheus metrics cho thấy ingestion worker pod bị OOMKilled (reason=OOMKilled). Pending documents accumulate nhanh (~15 docs/min). Worker không có pod disruption recovery nhanh → mất 35 phút mới có worker mới xử lý hết queue."
+  },
+  "impact_scope": {
+    "services_affected": ["ingestion-worker", "api"],
+    "users_affected": "Users upload document mới — không thấy kết quả ingest ngay",
+    "error_rate_peak": "47 pending docs không được process",
+    "slo_breach": "Ingestion latency SLO (5 min/10MB) breach"
+  },
+  "remediation": [
+    {
+      "step": 1,
+      "action": "Tăng memory limit của worker pod lên 1Gi",
+      "status": "done",
+      "note": "Patch HPA: requests=256Mi, limits=1Gi"
+    },
+    {
+      "step": 2,
+      "action": "Thêm liveness probe cho worker pod → K8s tự restart nếu deadlock",
+      "status": "done",
+      "note": "Thêm livenessProbe: exec 'arq health' mỗi 30s"
+    },
+    {
+      "step": 3,
+      "action": "Scale worker lên 2 replicas (HPA minReplicas=2)",
+      "status": "done",
+      "note": "Single point of failure — cần ≥ 2 workers"
+    },
+    {
+      "step": 4,
+      "action": "Process backlog 47 pending docs",
+      "status": "done",
+      "note": "Worker mới xử lý hết sau 12 phút"
+    }
+  ],
+  "prevention": [
+    "Tăng memory limit phù hợp với batch size thực tế — benchmark PDF 100MB",
+    "Thêm resource quota alerting: memory usage > 80% → warning trước khi OOM",
+    "Implement backpressure: reject batch upload > 10MB nếu queue depth > 20",
+    "Dead letter queue: docs fail > 3 lần → move sang DLQ thay vì loop retry"
+  ]
+}
