@@ -2,7 +2,7 @@
   "dashboard": {
     "title": "InsightHub — AIOps Dashboard",
     "uid": "insighthub-aiops",
-    "tags": ["insighthub", "aiops", "day4"],
+    "tags": ["insighthub", "aiops", "day4", "day6"],
     "timezone": "browser",
     "refresh": "30s",
     "panels": [
@@ -255,6 +255,54 @@
       },
       {
         "id": 12,
+        "title": "LLM Cost Estimate (FinOps) — Day 6",
+        "type": "stat",
+        "description": "Ước tính chi phí LLM theo ngày dựa trên token rate. Đơn giá: input $0.125/M tokens, output $0.50/M tokens (Gemini Flash).",
+        "targets": [
+          {
+            "expr": "(sum(rate(insighthub_llm_tokens_total{direction=\"input\"}[1h])) * 0.000000125 + sum(rate(insighthub_llm_tokens_total{direction=\"output\"}[1h])) * 0.0000005) * 3600",
+            "legendFormat": "estimated hourly cost (USD)",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 4,
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 0.5, "color": "yellow" },
+                { "value": 2, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "h": 6, "w": 6, "x": 12, "y": 30 }
+      },
+      {
+        "id": 13,
+        "title": "Embedding Token Rate (FinOps) — Day 6",
+        "type": "graph",
+        "description": "Tốc độ token embedding — chi phí tích lũy từ ingestion.",
+        "targets": [
+          {
+            "expr": "rate(insighthub_embedding_tokens_total[5m])",
+            "legendFormat": "embedding tokens/s",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "tokens", "label": "Tokens/s" },
+          { "format": "short" }
+        ],
+        "gridPos": { "h": 6, "w": 6, "x": 0, "y": 36 }
+      },
+      {
+        "id": 14,
         "title": "Deploy Annotations",
         "type": "annotations",
         "targets": [
@@ -264,7 +312,7 @@
             "refId": "A"
           }
         ],
-        "gridPos": { "h": 4, "w": 12, "x": 12, "y": 30 }
+        "gridPos": { "h": 4, "w": 12, "x": 12, "y": 36 }
       }
     ],
     "time": { "from": "now-6h", "to": "now" }

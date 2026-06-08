@@ -8,6 +8,7 @@ Khi không có API key (gemini/anthropic) → fallback extractive answer
 để lab vẫn chạy được end-to-end (chất lượng kém nhưng pipeline ok).
 """
 import logging
+import re
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -16,6 +17,34 @@ from app.core.config import get_settings
 
 logger = logging.getLogger("insighthub.llm")
 settings = get_settings()
+
+INJECTION_PATTERNS = [
+    re.compile(r"ignore\s+(all\s+)?previous\s+instructions?", re.IGNORECASE),
+    re.compile(r"ignore\s+(all\s+)?rules?", re.IGNORECASE),
+    re.compile(r"SYSTEM\s+(OVERRIDE|PROMPT|HACK)", re.IGNORECASE),
+    re.compile(r"you\s+are\s+now\s+in\s+", re.IGNORECASE),
+    re.compile(r"new\s+instructions?", re.IGNORECASE),
+    re.compile(r"disregard\s+(all\s+)?(previous|prior|above)", re.IGNORECASE),
+    re.compile(r"forget\s+(all\s+)?(previous|prior|above)", re.IGNORECASE),
+    re.compile(r"act\s+as\s+(if\s+)?you\s+are", re.IGNORECASE),
+    re.compile(r"pretend\s+(to\s+be|you\s+are)", re.IGNORECASE),
+    re.compile(r"reveal\s+(your|the)\s+(system\s+)?prompt", re.IGNORECASE),
+    re.compile(r"print\s+(your|the)\s+(system\s+)?prompt", re.IGNORECASE),
+    re.compile(r"NOTE\s+FOR\s+(THE\s+)?AI", re.IGNORECASE),
+    re.compile(r"AI\s+ASSISTANT:\s*", re.IGNORECASE),
+    re.compile(r"\[INST\]|\[/INST\]", re.IGNORECASE),
+    re.compile(r"<\|im_start\|>|<\|im_end\|>", re.IGNORECASE),
+]
+
+
+def sanitize_chunk(text: str) -> str:
+    """Strip known prompt injection patterns from chunk text before embedding."""
+    cleaned = text
+    for pat in INJECTION_PATTERNS:
+        cleaned = pat.sub("", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
 
 SYSTEM_PROMPT = """Bạn là trợ lý của InsightHub. Trả lời câu hỏi của người dùng \
 CHỈ dựa trên các đoạn tài liệu được cung cấp trong <context>. \
