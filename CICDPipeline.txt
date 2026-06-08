@@ -1,0 +1,316 @@
+Checkov / Ensure every security group and rule has a description
+Ensure every security group and rule has a description
+
+Show more details
+
+In infra/modules/cache/main.tf:
+
+> +resource "aws_security_group" "redis" {
++  name        = "${local.prefix}-redis-sg"
++  description = "Redis 6379 from EKS only"
++  vpc_id      = var.vpc_id
++
++  ingress {
++    from_port       = 6379
++    to_port         = 6379
++    protocol        = "tcp"
++    security_groups = [var.eks_nodes_sg_id]
++  }
++
++  egress {
++    from_port   = 0
++    to_port     = 0
++    protocol    = "-1"
++    cidr_blocks = ["0.0.0.0/0"]
++  }
++
++  tags = merge(var.tags, { Name = "${local.prefix}-redis-sg" })
++}
+Checkov / Ensure no security groups allow egress from 0.0.0.0:0 to port -1
+Ensure no security groups allow egress from 0.0.0.0:0 to port -1
+
+Show more details
+
+In infra/modules/cache/main.tf:
+
+> +resource "aws_secretsmanager_secret" "redis_connection" {
++  name                    = "insighthub/${var.environment}/redis-connection"
++  recovery_window_in_days = 7
++  kms_key_id              = var.kms_key_arn
++  tags                    = merge(var.tags, { Name = "${local.prefix}-redis-creds" })
++}
+Checkov / Ensure Secrets Manager secrets should have automatic rotation enabled
+Ensure Secrets Manager secrets should have automatic rotation enabled
+
+Show more details
+
+In infra/modules/cache/main.tf:
+
+> +resource "aws_cloudwatch_log_group" "insighthub" {
++  name              = "/aws/insighthub/${var.environment}"
++  retention_in_days = 30
++  kms_key_id        = var.kms_key_arn
++  tags              = merge(var.tags, { Name = "${local.prefix}-logs" })
++}
+Checkov / Ensure CloudWatch log groups retains logs for at least 1 year
+Ensure CloudWatch log groups retains logs for at least 1 year
+
+Show more details
+
+In infra/modules/database/main.tf:
+
+> +resource "aws_secretsmanager_secret" "rds_credentials" {
++  name                    = "insighthub/${var.environment}/rds-credentials"
++  recovery_window_in_days = 7
++  kms_key_id              = var.kms_key_arn
++  tags                    = merge(var.tags, { Name = "${local.prefix}-rds-creds" })
++}
+Checkov / Ensure Secrets Manager secrets should have automatic rotation enabled
+Ensure Secrets Manager secrets should have automatic rotation enabled
+
+Show more details
+
+In infra/modules/database/main.tf:
+
+> +resource "aws_security_group" "rds" {
++  name        = "${local.prefix}-rds-sg"
++  description = "PostgreSQL 5432 from EKS only"
++  vpc_id      = var.vpc_id
++
++  ingress {
++    from_port       = 5432
++    to_port         = 5432
++    protocol        = "tcp"
++    security_groups = [data.aws_security_group.eks_nodes.id]
++  }
++
++  egress {
++    from_port   = 0
++    to_port     = 0
++    protocol    = "-1"
++    cidr_blocks = ["0.0.0.0/0"]
++  }
++
++  tags = merge(var.tags, { Name = "${local.prefix}-rds-sg" })
++}
+Checkov / Ensure every security group and rule has a description
+Ensure every security group and rule has a description
+
+Show more details
+
+In infra/modules/database/main.tf:
+
+> +resource "aws_security_group" "rds" {
++  name        = "${local.prefix}-rds-sg"
++  description = "PostgreSQL 5432 from EKS only"
++  vpc_id      = var.vpc_id
++
++  ingress {
++    from_port       = 5432
++    to_port         = 5432
++    protocol        = "tcp"
++    security_groups = [data.aws_security_group.eks_nodes.id]
++  }
++
++  egress {
++    from_port   = 0
++    to_port     = 0
++    protocol    = "-1"
++    cidr_blocks = ["0.0.0.0/0"]
++  }
++
++  tags = merge(var.tags, { Name = "${local.prefix}-rds-sg" })
++}
+Checkov / Ensure no security groups allow egress from 0.0.0.0:0 to port -1
+Ensure no security groups allow egress from 0.0.0.0:0 to port -1
+
+Show more details
+
+In infra/modules/database/main.tf:
+
+> +resource "aws_db_instance" "insighthub" {
++  identifier        = "${local.prefix}-db"
++  engine            = "postgres"
++  engine_version    = "16.1"
++  instance_class    = var.instance_class
++  allocated_storage = var.allocated_storage
++  storage_type      = "gp3"
++  storage_encrypted = var.enable_encryption
++  kms_key_id        = var.enable_encryption ? aws_kms_key.rds.arn : null
++
++  db_name                = var.database_name
++  username               = var.master_username
++  password               = random_password.rds_password.result
++  db_subnet_group_name   = aws_db_subnet_group.insighthub.name
++  vpc_security_group_ids = [aws_security_group.rds.id]
++
++  parameter_group_name = aws_db_parameter_group.insighthub.name
++  publicly_accessible  = false
++
++  multi_az                   = var.enable_multi_az
++  backup_retention_period    = 7
++  backup_window              = "03:00-04:00"
++  maintenance_window         = "sun:04:00-sun:05:00"
++  auto_minor_version_upgrade = true
++  deletion_protection        = true
++
++  skip_final_snapshot                 = var.environment == "dev"
++  final_snapshot_identifier           = var.environment != "dev" ? "${local.prefix}-final-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
++  copy_tags_to_snapshot               = true
++  enable_cloudwatch_logs_exports      = ["postgresql"]
++  iam_database_authentication_enabled = true
++
++  monitoring_interval             = 60
++  monitoring_role_arn             = aws_iam_role.rds_monitoring.arn
++  performance_insights_enabled    = false
++  performance_insights_kms_key_id = var.enable_encryption ? aws_kms_key.rds.arn : null
++
++  tags       = merge(var.tags, { Name = "${local.prefix}-rds" })
++  depends_on = [aws_secretsmanager_secret_version.rds_credentials]
++}
+Checkov / Ensure that respective logs of Amazon Relational Database Service (Amazon RDS) are enabled
+Ensure that respective logs of Amazon Relational Database Service (Amazon RDS) are enabled
+
+Show more details
+
+In infra/modules/database/main.tf:
+
+> +resource "aws_db_instance" "insighthub" {
++  identifier        = "${local.prefix}-db"
++  engine            = "postgres"
++  engine_version    = "16.1"
++  instance_class    = var.instance_class
++  allocated_storage = var.allocated_storage
++  storage_type      = "gp3"
++  storage_encrypted = var.enable_encryption
++  kms_key_id        = var.enable_encryption ? aws_kms_key.rds.arn : null
++
++  db_name                = var.database_name
++  username               = var.master_username
++  password               = random_password.rds_password.result
++  db_subnet_group_name   = aws_db_subnet_group.insighthub.name
++  vpc_security_group_ids = [aws_security_group.rds.id]
++
++  parameter_group_name = aws_db_parameter_group.insighthub.name
++  publicly_accessible  = false
++
++  multi_az                   = var.enable_multi_az
++  backup_retention_period    = 7
++  backup_window              = "03:00-04:00"
++  maintenance_window         = "sun:04:00-sun:05:00"
++  auto_minor_version_upgrade = true
++  deletion_protection        = true
++
++  skip_final_snapshot                 = var.environment == "dev"
++  final_snapshot_identifier           = var.environment != "dev" ? "${local.prefix}-final-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
++  copy_tags_to_snapshot               = true
++  enable_cloudwatch_logs_exports      = ["postgresql"]
++  iam_database_authentication_enabled = true
++
++  monitoring_interval             = 60
++  monitoring_role_arn             = aws_iam_role.rds_monitoring.arn
++  performance_insights_enabled    = false
++  performance_insights_kms_key_id = var.enable_encryption ? aws_kms_key.rds.arn : null
++
++  tags       = merge(var.tags, { Name = "${local.prefix}-rds" })
++  depends_on = [aws_secretsmanager_secret_version.rds_credentials]
++}
+Checkov / Ensure that RDS instances have Multi-AZ enabled
+Ensure that RDS instances have Multi-AZ enabled
+
+Show more details
+
+In infra/modules/database/main.tf:
+
+> +resource "aws_db_instance" "insighthub" {
++  identifier        = "${local.prefix}-db"
++  engine            = "postgres"
++  engine_version    = "16.1"
++  instance_class    = var.instance_class
++  allocated_storage = var.allocated_storage
++  storage_type      = "gp3"
++  storage_encrypted = var.enable_encryption
++  kms_key_id        = var.enable_encryption ? aws_kms_key.rds.arn : null
++
++  db_name                = var.database_name
++  username               = var.master_username
++  password               = random_password.rds_password.result
++  db_subnet_group_name   = aws_db_subnet_group.insighthub.name
++  vpc_security_group_ids = [aws_security_group.rds.id]
++
++  parameter_group_name = aws_db_parameter_group.insighthub.name
++  publicly_accessible  = false
++
++  multi_az                   = var.enable_multi_az
++  backup_retention_period    = 7
++  backup_window              = "03:00-04:00"
++  maintenance_window         = "sun:04:00-sun:05:00"
++  auto_minor_version_upgrade = true
++  deletion_protection        = true
++
++  skip_final_snapshot                 = var.environment == "dev"
++  final_snapshot_identifier           = var.environment != "dev" ? "${local.prefix}-final-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
++  copy_tags_to_snapshot               = true
++  enable_cloudwatch_logs_exports      = ["postgresql"]
++  iam_database_authentication_enabled = true
++
++  monitoring_interval             = 60
++  monitoring_role_arn             = aws_iam_role.rds_monitoring.arn
++  performance_insights_enabled    = false
++  performance_insights_kms_key_id = var.enable_encryption ? aws_kms_key.rds.arn : null
++
++  tags       = merge(var.tags, { Name = "${local.prefix}-rds" })
++  depends_on = [aws_secretsmanager_secret_version.rds_credentials]
++}
+Checkov / Ensure that RDS instances have performance insights enabled
+Ensure that RDS instances have performance insights enabled
+
+Show more details
+
+In infra/modules/database/main.tf:
+
+> +resource "aws_cloudwatch_log_group" "insighthub" {
++  name              = "/aws/insighthub/${var.environment}"
++  retention_in_days = 30
++  kms_key_id        = var.enable_encryption ? aws_kms_key.rds.arn : null
++  tags              = merge(var.tags, { Name = "${local.prefix}-logs" })
++}
+Checkov / Ensure CloudWatch log groups retains logs for at least 1 year
+Ensure CloudWatch log groups retains logs for at least 1 year
+
+
+
+IaC - Terraform CI/CD Pipeline workflow run
+ 
+---------------------------------------------------------------------------
+ 
+IaC - Terraform CI/CD Pipeline: Some jobs were not successful
+ 
+View workflow run
+ 
+Status	Job	Annotations
+Terraform Format	
+IaC - Terraform CI/CD Pipeline / Terraform Format
+Succeeded in 6 seconds
+
+Terraform Lint	
+IaC - Terraform CI/CD Pipeline / Terraform Lint
+Succeeded in 9 seconds
+
+annotations for IaC - Terraform CI/CD Pipeline / Terraform Lint 1
+Security Scan	
+IaC - Terraform CI/CD Pipeline / Security Scan
+Failed in 36 seconds
+
+annotations for IaC - Terraform CI/CD Pipeline / Security Scan 2
+Terraform Validate & Plan	
+IaC - Terraform CI/CD Pipeline / Terraform Validate & Plan
+Skipped
+
+Cost Estimate	
+IaC - Terraform CI/CD Pipeline / Cost Estimate
+Skipped
+
+Terraform Apply	
+IaC - Terraform CI/CD Pipeline / Terraform Apply
+Skipped

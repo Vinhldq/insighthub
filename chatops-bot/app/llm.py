@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any
 
 import anthropic
@@ -12,10 +13,10 @@ import httpx
 
 logger = logging.getLogger("chatops-bot.llm")
 
-PROVIDER = os.getenv("CHATOPS_LLM_PROVIDER", "deepseek").lower()
+PROVIDER = os.getenv("CHATOPS_LLM_PROVIDER", "gemini").lower()
 API_KEY = os.getenv(
     f"{PROVIDER.upper()}_API_KEY",
-    os.getenv("ANTHROPIC_API_KEY", ""),
+    os.getenv("GEMINI_API_KEY", os.getenv("ANTHROPIC_API_KEY", "")),
 )
 BASE_URL = os.getenv(f"{PROVIDER.upper()}_BASE_URL", "")
 
@@ -24,28 +25,27 @@ MODELS = {
     "gemini": os.getenv("GEMINI_CHAT_MODEL", "gemini-3-flash-preview"),
     "anthropic": os.getenv("ANTHROPIC_CHAT_MODEL", "claude-sonnet-4-6"),
 }
-MODEL = MODELS.get(PROVIDER, "deepseek-v4-flash")
+MODEL = MODELS.get(PROVIDER, "gemini-3-flash-preview")
 
-SYSTEM_PROMPT_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "prompts", "system.md",
-)
+SYSTEM_PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "system.md"
 
 
 def load_system_prompt() -> str:
     try:
-        with open(SYSTEM_PROMPT_PATH, encoding="utf-8") as f:
-            return f.read().strip()
+        return SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
-        return "You are an AI DevOps assistant for InsightHub. Use available tools to answer questions about the infrastructure."
+        return (
+            "You are an AI DevOps assistant for InsightHub. "
+            "Use available tools to answer questions about the infrastructure."
+        )
 
 
 def _anthropic_call(messages: list[dict]) -> anthropic.types.Message:
     client = anthropic.Anthropic(api_key=API_KEY)
-    sys = load_system_prompt()
     return client.messages.create(
         model=MODEL,
         max_tokens=2048,
-        system=sys,
+        system=load_system_prompt(),
         tools=_format_tools(),
         messages=messages,
     )
@@ -55,12 +55,8 @@ def _openai_compat_call(messages: list[dict]) -> dict:
     url = BASE_URL or {
         "deepseek": "https://api.deepseek.com/v1/chat/completions",
         "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-    }.get(PROVIDER, "https://api.deepseek.com/v1/chat/completions")
+    }.get(PROVIDER, "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
 
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json",
-    }
     body: dict[str, Any] = {
         "model": MODEL,
         "messages": [{"role": "system", "content": load_system_prompt()}] + messages,
@@ -68,6 +64,7 @@ def _openai_compat_call(messages: list[dict]) -> dict:
         "tools": _format_tools(),
         "tool_choice": "auto",
     }
+    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
     with httpx.Client(timeout=60) as client:
         resp = client.post(url, headers=headers, json=body)
         resp.raise_for_status()

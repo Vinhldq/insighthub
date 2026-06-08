@@ -10,6 +10,10 @@ terraform {
 variable "environment" { type = string }
 variable "aws_region" { type = string }
 variable "vpc_id" { type = string }
+variable "vpc_cidr" {
+  type        = string
+  description = "VPC CIDR block for security group egress rules"
+}
 variable "private_subnet_ids" { type = list(string) }
 variable "enable_encryption" { type = bool }
 variable "enable_multi_az" { type = bool }
@@ -69,7 +73,7 @@ resource "aws_security_group" "rds" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.vpc_cidr]
   }
 
   tags = merge(var.tags, { Name = "${local.prefix}-rds-sg" })
