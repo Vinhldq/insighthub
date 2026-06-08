@@ -1,24 +1,31 @@
-"""
-InsightHub ChatOps Bot — SKELETON (Day 5)
+"""InsightHub ChatOps Bot — FastAPI app with Slack integration."""
 
-⚠️ Đây là KHUNG. Học viên hoàn thiện trong Day 5.
-Bot nhận câu hỏi vận hành từ Slack, dùng MCP backend (k8s + prometheus)
-query thông tin, để Claude tóm tắt và trả lời.
+from __future__ import annotations
 
-Các phần TODO được đánh dấu rõ. Học viên dùng Claude Code để hoàn thiện.
-"""
+import hashlib
+import hmac
 import logging
 import os
+from contextvars import ContextVar
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
-logging.basicConfig(level="INFO")
-logger = logging.getLogger("chatops-bot")
+from app.handler import handle_question
+
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+logger = logging.getLogger("chatops-bot.main")
 
 app = FastAPI(title="InsightHub ChatOps Bot")
 
 SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
+CHANNEL: ContextVar[str] = ContextVar("channel", default="")
+USER_ID: ContextVar[str] = ContextVar("user_id", default="unknown")
+slack_client = WebClient(token=SLACK_BOT_TOKEN) if SLACK_BOT_TOKEN else None
 
 
 @app.get("/healthz")
@@ -28,41 +35,67 @@ async def health():
 
 @app.post("/slack/events")
 async def slack_events(request: Request):
-    """
-    Endpoint nhận Slack event.
+    timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
+    signature = request.headers.get("X-Slack-Signature", "")
 
-    TODO Day 5:
-    1. Verify Slack signature (dùng SLACK_SIGNING_SECRET) — bảo mật bắt buộc.
-    2. Xử lý url_verification challenge khi setup Slack app.
-    3. Với app_mention / message: trích câu hỏi của user.
-    4. Gọi handle_question() để xử lý.
-    5. Trả kết quả về Slack channel.
-    """
+    if not verify_signature(await request.body(), timestamp, signature):
+        return JSONResponse({"error": "invalid signature"}, status_code=401)
+
     body = await request.json()
 
-    # Slack URL verification (giữ lại — cần khi cấu hình Slack app)
     if body.get("type") == "url_verification":
         return {"challenge": body.get("challenge")}
 
-    # TODO: verify signature, parse event, gọi handle_question
-    logger.info("Nhận Slack event: %s", body.get("type"))
+    if body.get("type") != "event_callback":
+        return {"ok": True}
+
+    event = body.get("event", {})
+    event_type = event.get("type")
+    user = event.get("user", "unknown")
+    text = event.get("text", "").strip()
+    channel = event.get("channel", "")
+    event_ts = event.get("ts", "")
+
+    if event_type == "app_mention":
+        CHANNEL.set(channel)
+        USER_ID.set(user)
+        question = text.split(maxsplit=1)[-1].strip() if " " in text else ""
+        if not question:
+            post_message(channel, "Bạn muốn hỏi gì? Tag tôi và đặt câu hỏi.", event_ts)
+            return {"ok": True}
+        post_message(channel, f"Đang xử lý: *{question}*...", event_ts)
+        try:
+            answer = handle_question(question, user)
+            post_message(channel, answer, event_ts)
+        except Exception as exc:
+            logger.exception("handle_question failed")
+            post_message(channel, f"Lỗi: {exc}", event_ts)
+
     return {"ok": True}
 
 
-async def handle_question(question: str) -> str:
-    """
-    Xử lý 1 câu hỏi vận hành về InsightHub.
+def verify_signature(body: bytes, timestamp: str, signature: str) -> bool:
+    if not SLACK_SIGNING_SECRET:
+        logger.warning("SLACK_SIGNING_SECRET not set — skipping verification")
+        return True
+    basestring = f"v0:{timestamp}:{body.decode('utf-8', errors='replace')}"
+    expected = "v0=" + hmac.new(
+        SLACK_SIGNING_SECRET.encode(),
+        basestring.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
 
-    TODO Day 5:
-    1. Dùng MCP backend (k8s + prometheus) để query thông tin cần thiết.
-       Gợi ý: gọi Claude API với MCP servers, hoặc dùng kubectl/promql trực tiếp.
-    2. Để Claude tóm tắt kết quả thành câu trả lời ngắn gọn.
-    3. GHI AUDIT LOG mọi tool call (xem audit.py) — bắt buộc.
-    4. Với hành động destructive: yêu cầu approval (human-in-the-loop).
 
-    Câu hỏi mẫu cần trả lời được:
-      - "InsightHub có healthy không?"
-      - "Hôm nay ingest bao nhiêu tài liệu?"
-      - "Pod nào đang lỗi?"
-    """
-    raise NotImplementedError("Học viên hoàn thiện trong Day 5")
+def post_message(channel: str, text: str, thread_ts: str = "") -> None:
+    if not slack_client:
+        logger.info("Would post to %s: %s", channel, text)
+        return
+    try:
+        slack_client.chat_postMessage(
+            channel=channel,
+            text=text,
+            thread_ts=thread_ts,
+        )
+    except SlackApiError as exc:
+        logger.error("Slack API error: %s", exc)
