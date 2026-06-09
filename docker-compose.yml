@@ -26,7 +26,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./infra/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U insighthub" ]
+      test: ["CMD-SHELL", "pg_isready -U insighthub"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -101,7 +101,7 @@ services:
     environment:
       API_INTERNAL_URL: http://api:8000
     ports:
-      - "3000:3000"
+      - "3001:3000"
     depends_on:
       - api
 
@@ -119,13 +119,13 @@ services:
   #    trong .env để api dùng local model thay vì Gemini/Anthropic.
   ollama:
     image: ollama/ollama:latest
-    profiles: [ "ollama" ] # chỉ start khi `--profile ollama`
+    profiles: ["ollama"] # chỉ start khi `--profile ollama`
     ports:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
     healthcheck:
-      test: [ "CMD", "ollama", "list" ]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 3
