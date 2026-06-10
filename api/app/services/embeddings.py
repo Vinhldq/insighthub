@@ -59,6 +59,10 @@ def _truncate_normalize(vec: Iterable[float], dim: int) -> list[float]:
     return [v / norm for v in truncated]
 
 
+def _sanitize_vector(vec):
+    import math
+    return [0.0 if (math.isnan(v) or math.isinf(v)) else v for v in vec]
+
 # ============================================================
 # Gemini provider (default)
 # ============================================================

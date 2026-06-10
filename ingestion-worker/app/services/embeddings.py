@@ -58,6 +58,15 @@ def _truncate_normalize(vec: Iterable[float], dim: int) -> list[float]:
     norm = sum(v * v for v in truncated) ** 0.5 or 1.0
     return [v / norm for v in truncated]
 
+def _sanitize_vector(vec: list[float]) -> list[float]:
+    """Thay thế NaN/Infinity bằng 0.0 — pgvector không chấp nhận giá trị không hữu hạn."""
+    return [0.0 if (v != v or v == float("inf") or v == float("-inf")) else v for v in vec]
+
+
+def _sanitize_vector(vec: list[float]) -> list[float]:
+    """Thay thế NaN/Infinity bằng 0.0 — pgvector không chấp nhận NaN."""
+    import math
+    return [0.0 if (math.isnan(v) or math.isinf(v)) else v for v in vec]
 
 # ============================================================
 # Gemini provider (default)
@@ -161,30 +170,30 @@ def embed(texts: list[str], input_type: str = "document") -> list[list[float]]:
         if provider == "gemini":
             if not settings.gemini_api_key:
                 logger.warning("EMBEDDING_PROVIDER=gemini nhưng GEMINI_API_KEY trống — fallback local")
-                return _local_embed(texts, settings.embedding_dim)
-            return _gemini_embed(texts, input_type)
+                return [_sanitize_vector(v) for v in _local_embed(texts, settings.embedding_dim)]
+            return [_sanitize_vector(v) for v in _gemini_embed(texts, input_type)]
 
         if provider == "voyage":
             if not settings.voyage_api_key:
                 logger.warning("EMBEDDING_PROVIDER=voyage nhưng VOYAGE_API_KEY trống — fallback local")
-                return _local_embed(texts, settings.embedding_dim)
-            return _voyage_embed(texts, input_type)
+                return [_sanitize_vector(v) for v in _local_embed(texts, settings.embedding_dim)]
+            return [_sanitize_vector(v) for v in _voyage_embed(texts, input_type)]
 
         if provider == "openai":
             if not settings.openai_api_key:
                 logger.warning("EMBEDDING_PROVIDER=openai nhưng OPENAI_API_KEY trống — fallback local")
-                return _local_embed(texts, settings.embedding_dim)
-            return _openai_embed(texts)
+                return [_sanitize_vector(v) for v in _local_embed(texts, settings.embedding_dim)]
+            return [_sanitize_vector(v) for v in _openai_embed(texts)]
 
         if provider == "ollama":
-            return _ollama_embed(texts)
+            return [_sanitize_vector(v) for v in _ollama_embed(texts)]
 
         if provider == "local":
-            return _local_embed(texts, settings.embedding_dim)
+            return [_sanitize_vector(v) for v in _local_embed(texts, settings.embedding_dim)]
 
         logger.warning("Unsupported EMBEDDING_PROVIDER='%s' — fallback local", provider)
-        return _local_embed(texts, settings.embedding_dim)
+        return [_sanitize_vector(v) for v in _local_embed(texts, settings.embedding_dim)]
 
     except Exception as exc:  # noqa: BLE001
         logger.error("Embedding failed (%s): %s — fallback local", provider, exc)
-        return _local_embed(texts, settings.embedding_dim)
+        return [_sanitize_vector(v) for v in _local_embed(texts, settings.embedding_dim)]

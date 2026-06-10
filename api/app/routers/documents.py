@@ -80,6 +80,24 @@ async def list_documents():
     ]
 
 
+@router.get('/{document_id}')
+async def get_document(document_id: int):
+	with get_conn() as conn:
+		row = conn.execute(
+			'SELECT id, filename, status, chunk_count, created_at '
+			'FROM documents WHERE id = %s',
+			(document_id,),
+		).fetchone()
+	if row is None:
+		raise HTTPException(404, 'Không tìm thấy tài liệu')
+	return {
+		'id': row[0],
+		'filename': row[1],
+		'status': row[2],
+		'chunk_count': row[3],
+		'created_at': row[4].isoformat() if row[4] else None,
+	}
+
 @router.delete("/{document_id}", status_code=204)
 async def delete_document(document_id: int):
     with get_conn() as conn:
