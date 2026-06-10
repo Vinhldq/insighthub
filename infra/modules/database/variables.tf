@@ -1,6 +1,11 @@
 variable "environment" { type = string }
 variable "aws_region" { type = string }
 variable "vpc_id" { type = string }
+variable "vpc_cidr" {
+  type        = string
+  description = "VPC CIDR block for security group egress rules"
+}
+variable "vpc_cidr" { type = string }
 variable "private_subnet_ids" { type = list(string) }
 variable "enable_encryption" { type = bool }
 variable "enable_multi_az" { type = bool }

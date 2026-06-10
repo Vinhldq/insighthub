@@ -21,6 +21,7 @@ import logging
 from app.core.db import get_conn
 from app.services.chunking import chunk_text
 from app.services.embeddings import embed
+from app.services.llm import sanitize_chunk
 
 logger = logging.getLogger("insighthub.ingestion")
 
@@ -48,6 +49,7 @@ def process_document(document_id: int, filename: str, content: bytes) -> int:
     """
     text = extract_text(filename, content)
     chunks = chunk_text(text)
+    chunks = [sanitize_chunk(c) for c in chunks]
     if not chunks:
         logger.warning("Document %s không có nội dung", document_id)
         _update_status(document_id, "ready", chunk_count=0)

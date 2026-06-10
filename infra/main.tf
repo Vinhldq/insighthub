@@ -4,6 +4,7 @@ module "database" {
   environment        = var.environment
   aws_region         = var.aws_region
   vpc_id             = var.vpc_id
+  vpc_cidr           = var.vpc_cidr
   private_subnet_ids = var.private_subnet_ids
   enable_encryption  = var.enable_encryption
   enable_multi_az    = var.enable_multi_az
@@ -22,6 +23,7 @@ module "cache" {
   environment        = var.environment
   aws_region         = var.aws_region
   vpc_id             = var.vpc_id
+  vpc_cidr           = var.vpc_cidr
   private_subnet_ids = var.private_subnet_ids
   enable_encryption  = var.enable_encryption
   enable_multi_az    = var.enable_multi_az

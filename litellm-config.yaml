@@ -1,0 +1,30 @@
+model_list:
+  - model_name: "insighthub-chat"
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  - model_name: "insighthub-embed"
+    litellm_params:
+      model: gemini/text-embedding-004
+      api_key: os.environ/GEMINI_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  max_budget: 5.0
+  budget_duration: daily
+
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 3
+  timeout: 60
+  allowed_fails: 3
+
+rate_limit:
+  - model_name: "insighthub-chat"
+    requests_per_minute: 30
+    tokens_per_minute: 100000
+
+  - model_name: "insighthub-embed"
+    requests_per_minute: 60
+    tokens_per_minute: 200000
